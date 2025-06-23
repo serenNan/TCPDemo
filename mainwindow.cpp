@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include <QDateTime>
 #include <QHostAddress>
 #include <QMessageBox>
 
@@ -128,7 +129,7 @@ void MainWindow::sendMessage()
     if (currentMode == ClientMode && client->isConnected())
     {
         client->sendMessage(message);
-        appendToLog(tr("发送: %1").arg(message));
+        appendTimestampedMessage(tr("发送: %1").arg(message), SentMessage);
         ui->messageEdit->clear();
     }
     else if (currentMode == ServerMode && server->isRunning())
@@ -139,14 +140,15 @@ void MainWindow::sendMessage()
         {
             // 发送给所有客户端
             server->broadcastMessage(message);
-            appendToLog(tr("广播给 %1 个客户端: %2").arg(server->clientCount()).arg(message));
+            appendTimestampedMessage(
+                tr("广播给 %1 个客户端: %2").arg(server->clientCount()).arg(message), SentMessage);
         }
         else
         {
             // 发送给特定客户端
             QString clientInfo = ui->targetClientComboBox->currentText();
             server->sendMessageToClient(clientInfo, message);
-            appendToLog(tr("发送给 %1: %2").arg(clientInfo).arg(message));
+            appendTimestampedMessage(tr("发送给 %1: %2").arg(clientInfo).arg(message), SentMessage);
         }
 
         ui->messageEdit->clear();
@@ -168,7 +170,7 @@ void MainWindow::onClientDisconnected()
 
 void MainWindow::onClientMessageReceived(const QString &message)
 {
-    appendToLog(tr("接收: %1").arg(message));
+    appendTimestampedMessage(tr("接收: %1").arg(message), ReceivedMessage);
 }
 
 void MainWindow::onClientError(const QString &errorMessage)
@@ -210,7 +212,8 @@ void MainWindow::onServerClientDisconnected(const QString &clientInfo)
 
 void MainWindow::onServerMessageReceived(const QString &clientInfo, const QString &message)
 {
-    appendToLog(tr("收到来自 %1 的消息: %2").arg(clientInfo).arg(message));
+    appendTimestampedMessage(tr("收到来自 %1 的消息: %2").arg(clientInfo).arg(message),
+                             ReceivedMessage);
 }
 
 void MainWindow::onServerError(const QString &errorMessage)
@@ -282,9 +285,99 @@ void MainWindow::updateUI()
     setWindowTitle(title);
 }
 
-void MainWindow::appendToLog(const QString &message)
+void MainWindow::appendToLog(const QString &message, MessageType type)
 {
-    ui->logTextEdit->append(message);
+    QString coloredMessage;
+
+    switch (type)
+    {
+    case SystemMessage:
+        coloredMessage = QString("<font color='gray'>%1</font>").arg(message);
+        break;
+    case SentMessage:
+        coloredMessage = QString("<font color='black'>%1</font>").arg(message);
+        break;
+    case ReceivedMessage:
+        coloredMessage = QString("<font color='black'>%1</font>").arg(message);
+        break;
+    case TimeStamp:
+        coloredMessage = QString("<font color='blue'>%1</font>").arg(message);
+        break;
+    }
+
+    ui->logTextEdit->append(coloredMessage);
+}
+
+void MainWindow::appendTimestampedMessage(const QString &message, MessageType type)
+{
+    // 对于接收的消息，分离系统信息和实际消息内容
+    if (type == ReceivedMessage)
+    {
+        // 查找消息内容的起始位置
+        int colonPos = message.lastIndexOf(": ");
+        if (colonPos != -1)
+        {
+            // 分离系统信息和实际消息内容
+            QString sysInfo = message.left(colonPos + 2); // 包含冒号和空格
+            QString actualMessage = message.mid(colonPos + 2);
+
+            // 添加时间戳和系统信息在同一行
+            QString timestamp = QDateTime::currentDateTime().toString("[yyyy-MM-dd hh:mm:ss] ");
+            QString combinedInfo = timestamp + sysInfo;
+            ui->logTextEdit->append(
+                QString("<font color='blue'>%1</font><font color='gray'>%2</font>")
+                    .arg(timestamp)
+                    .arg(sysInfo));
+
+            // 实际消息内容单独一行显示
+            appendToLog(actualMessage, type);
+        }
+        else
+        {
+            // 如果无法分离，则使用原来的方式显示
+            QString timestamp = QDateTime::currentDateTime().toString("[yyyy-MM-dd hh:mm:ss]");
+            appendToLog(timestamp, TimeStamp);
+            appendToLog(message, type);
+        }
+    }
+    // 对于发送的消息，也进行类似处理
+    else if (type == SentMessage)
+    {
+        int colonPos = message.indexOf(": ");
+        if (colonPos != -1)
+        {
+            // 分离系统信息和实际消息内容
+            QString sysInfo = message.left(colonPos + 2); // 包含冒号和空格
+            QString actualMessage = message.mid(colonPos + 2);
+
+            // 添加时间戳和系统信息在同一行
+            QString timestamp = QDateTime::currentDateTime().toString("[yyyy-MM-dd hh:mm:ss] ");
+            ui->logTextEdit->append(
+                QString("<font color='blue'>%1</font><font color='gray'>%2</font>")
+                    .arg(timestamp)
+                    .arg(sysInfo));
+
+            // 实际消息内容单独一行显示
+            appendToLog(actualMessage, type);
+        }
+        else
+        {
+            // 如果无法分离，则使用原来的方式显示
+            QString timestamp = QDateTime::currentDateTime().toString("[yyyy-MM-dd hh:mm:ss]");
+            appendToLog(timestamp, TimeStamp);
+            appendToLog(message, type);
+        }
+    }
+    else
+    {
+        // 其他类型的消息保持原样处理
+        QString timestamp = QDateTime::currentDateTime().toString("[yyyy-MM-dd hh:mm:ss]");
+        appendToLog(timestamp, TimeStamp);
+        appendToLog(message, type);
+    }
+
+    // 添加空行
+    ui->logTextEdit->append("");
 }
 
 void MainWindow::on_sendEncodingComboBox_currentIndexChanged(int index)

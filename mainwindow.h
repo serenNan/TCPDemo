@@ -1,12 +1,14 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <QMainWindow>
-#include <QComboBox>
 #include "TCPClient.h"
 #include "TCPServer.h"
+#include <QComboBox>
+#include <QDateTime>
+#include <QMainWindow>
 
-namespace Ui {
+namespace Ui
+{
 class MainWindow;
 }
 
@@ -14,11 +16,11 @@ class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
-public:
+  public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-private slots:
+  private slots:
     void on_modeComboBox_currentTextChanged(const QString &mode);
     void on_startButton_clicked();
     void on_stopButton_clicked();
@@ -29,13 +31,13 @@ private slots:
     void on_sendEncodingComboBox_currentIndexChanged(int index);
     void on_receiveEncodingComboBox_currentIndexChanged(int index);
     void on_targetClientComboBox_currentIndexChanged(int index);
-    
+
     // 客户端相关槽函数
     void onClientConnected();
     void onClientDisconnected();
     void onClientMessageReceived(const QString &message);
     void onClientError(const QString &errorMessage);
-    
+
     // 服务端相关槽函数
     void onServerStarted(int port);
     void onServerStopped();
@@ -44,32 +46,43 @@ private slots:
     void onServerMessageReceived(const QString &clientInfo, const QString &message);
     void onServerError(const QString &errorMessage);
 
-private:
+  private:
     Ui::MainWindow *ui;
-    
+
     // 客户端和服务端
     TCPClient *client;
     TCPServer *server;
-    
+
     // 客户端选择下拉框
     QComboBox *targetClientComboBox;
-    
+
     // 当前模式
-    enum Mode {
+    enum Mode
+    {
         ClientMode,
         ServerMode
     } currentMode;
-    
+
+    // 消息类型
+    enum MessageType
+    {
+        SystemMessage,   // 系统消息 - 灰色
+        SentMessage,     // 发送的消息 - 黑色
+        ReceivedMessage, // 接收的消息 - 黑色
+        TimeStamp        // 时间戳 - 蓝色
+    };
+
     void updateUI();
-    void appendToLog(const QString &message);
+    void appendToLog(const QString &message, MessageType type = SystemMessage);
+    void appendTimestampedMessage(const QString &message, MessageType type);
     void sendMessage();
     void setupConnections();
-    
+
     // 更新编码设置
     void updateEncodingSettings();
-    
+
     // 更新客户端列表
     void updateClientList();
 };
 
-#endif // MAINWINDOW_H 
+#endif // MAINWINDOW_H
