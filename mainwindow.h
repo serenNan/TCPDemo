@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QComboBox>
 #include "TCPClient.h"
 #include "TCPServer.h"
 
@@ -27,6 +28,7 @@ private slots:
     void on_actionNewWindow_triggered();
     void on_sendEncodingComboBox_currentIndexChanged(int index);
     void on_receiveEncodingComboBox_currentIndexChanged(int index);
+    void on_targetClientComboBox_currentIndexChanged(int index);
     
     // 客户端相关槽函数
     void onClientConnected();
@@ -49,6 +51,9 @@ private:
     TCPClient *client;
     TCPServer *server;
     
+    // 客户端选择下拉框
+    QComboBox *targetClientComboBox;
+    
     // 当前模式
     enum Mode {
         ClientMode,
@@ -62,6 +67,9 @@ private:
     
     // 更新编码设置
     void updateEncodingSettings();
+    
+    // 更新客户端列表
+    void updateClientList();
 };
 
 #endif // MAINWINDOW_H 

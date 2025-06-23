@@ -110,6 +110,39 @@
      </widget>
     </item>
     <item>
+     <layout class="QHBoxLayout" name="targetClientLayout">
+      <item>
+       <widget class="QLabel" name="targetClientLabel">
+        <property name="text">
+         <string>发送目标:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="targetClientComboBox">
+        <item>
+         <property name="text">
+          <string>所有客户端</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer_4">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+     </layout>
+    </item>
+    <item>
      <layout class="QHBoxLayout" name="messageLayout">
       <item>
        <widget class="QLineEdit" name="messageEdit">
