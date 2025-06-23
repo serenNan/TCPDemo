@@ -25,6 +25,8 @@ private slots:
     void on_sendButton_clicked();
     void on_messageEdit_returnPressed();
     void on_actionNewWindow_triggered();
+    void on_sendEncodingComboBox_currentIndexChanged(int index);
+    void on_receiveEncodingComboBox_currentIndexChanged(int index);
     
     // 客户端相关槽函数
     void onClientConnected();
@@ -57,6 +59,9 @@ private:
     void appendToLog(const QString &message);
     void sendMessage();
     void setupConnections();
+    
+    // 更新编码设置
+    void updateEncodingSettings();
 };
 
 #endif // MAINWINDOW_H 

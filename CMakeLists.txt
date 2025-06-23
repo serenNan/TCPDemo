@@ -4,7 +4,7 @@ project(TCPDemo VERSION 1.0)
 # 设置C++标准
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # 添加编译选项
 add_compile_options(-Wall -Wextra)
 

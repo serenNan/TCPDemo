@@ -20,6 +20,13 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->portEdit->setText("8888");
     ui->modeComboBox->setCurrentText("客户端");
     
+    // 默认选择GBK编码发送，自动检测接收
+    ui->sendEncodingComboBox->setCurrentIndex(1); // GBK
+    ui->receiveEncodingComboBox->setCurrentIndex(0); // 自动检测
+    
+    // 初始化编码设置
+    updateEncodingSettings();
+    
     setupConnections();
 }
 
@@ -237,4 +244,56 @@ void MainWindow::updateUI()
 void MainWindow::appendToLog(const QString &message)
 {
     ui->logTextEdit->append(message);
+}
+
+void MainWindow::on_sendEncodingComboBox_currentIndexChanged(int index)
+{
+    updateEncodingSettings();
+}
+
+void MainWindow::on_receiveEncodingComboBox_currentIndexChanged(int index)
+{
+    updateEncodingSettings();
+}
+
+void MainWindow::updateEncodingSettings()
+{
+    // 获取当前选择的编码
+    int sendIndex = ui->sendEncodingComboBox->currentIndex();
+    int receiveIndex = ui->receiveEncodingComboBox->currentIndex();
+    
+    // 设置客户端编码
+    if (sendIndex == 0) { // UTF-8
+        client->setSendEncoding(TCPClient::UTF8);
+    } else { // GBK
+        client->setSendEncoding(TCPClient::GBK);
+    }
+    
+    if (receiveIndex == 0) { // 自动检测
+        client->setReceiveEncoding(TCPClient::AUTO);
+    } else if (receiveIndex == 1) { // UTF-8
+        client->setReceiveEncoding(TCPClient::UTF8);
+    } else { // GBK
+        client->setReceiveEncoding(TCPClient::GBK);
+    }
+    
+    // 设置服务端编码
+    if (sendIndex == 0) { // UTF-8
+        server->setSendEncoding(TCPServer::UTF8);
+    } else { // GBK
+        server->setSendEncoding(TCPServer::GBK);
+    }
+    
+    if (receiveIndex == 0) { // 自动检测
+        server->setReceiveEncoding(TCPServer::AUTO);
+    } else if (receiveIndex == 1) { // UTF-8
+        server->setReceiveEncoding(TCPServer::UTF8);
+    } else { // GBK
+        server->setReceiveEncoding(TCPServer::GBK);
+    }
+    
+    // 记录编码设置到日志
+    QString sendEncoding = ui->sendEncodingComboBox->currentText();
+    QString receiveEncoding = ui->receiveEncodingComboBox->currentText();
+    appendToLog(tr("编码设置已更新 - 发送: %1, 接收: %2").arg(sendEncoding).arg(receiveEncoding));
 } 

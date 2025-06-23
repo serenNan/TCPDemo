@@ -37,9 +37,26 @@ void TCPClient::disconnectFromServer()
 void TCPClient::sendMessage(const QString &message)
 {
     if (clientSocket->state() == QAbstractSocket::ConnectedState) {
-        // 默认使用UTF-8编码发送消息
-        QByteArray data = message.toUtf8();
+        // 根据编码设置对消息进行编码
+        QByteArray data = encodeMessage(message);
         clientSocket->write(data);
+    }
+}
+
+QByteArray TCPClient::encodeMessage(const QString &message)
+{
+    switch (sendEncoding) {
+    case GBK: {
+        QTextCodec *gbkCodec = QTextCodec::codecForName("GBK");
+        if (gbkCodec) {
+            return gbkCodec->fromUnicode(message);
+        }
+        // 如果没有GBK编码支持，回退到UTF-8
+        return message.toUtf8();
+    }
+    case UTF8:
+    default:
+        return message.toUtf8();
     }
 }
 
@@ -62,8 +79,21 @@ void TCPClient::onSocketReadyRead()
 {
     QByteArray data = clientSocket->readAll();
     
-    // 智能检测编码
-    QString message = tryDecodeMessage(data);
+    // 根据接收编码设置解码消息
+    QString message;
+    if (receiveEncoding == AUTO) {
+        message = tryDecodeMessage(data);
+    } else if (receiveEncoding == GBK) {
+        QTextCodec *gbkCodec = QTextCodec::codecForName("GBK");
+        if (gbkCodec) {
+            message = gbkCodec->toUnicode(data);
+        } else {
+            message = QString::fromUtf8(data);
+        }
+    } else { // UTF8
+        message = QString::fromUtf8(data);
+    }
+    
     emit messageReceived(message);
 }
 

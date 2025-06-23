@@ -67,13 +67,30 @@ void TCPServer::broadcastMessage(const QString &message)
         return;
     }
     
-    // 默认使用UTF-8编码发送消息
-    QByteArray data = message.toUtf8();
+    // 根据编码设置对消息进行编码
+    QByteArray data = encodeMessage(message);
     
     for (QTcpSocket *client : clients) {
         if (client->state() == QAbstractSocket::ConnectedState) {
             client->write(data);
         }
+    }
+}
+
+QByteArray TCPServer::encodeMessage(const QString &message)
+{
+    switch (sendEncoding) {
+    case GBK: {
+        QTextCodec *gbkCodec = QTextCodec::codecForName("GBK");
+        if (gbkCodec) {
+            return gbkCodec->fromUnicode(message);
+        }
+        // 如果没有GBK编码支持，回退到UTF-8
+        return message.toUtf8();
+    }
+    case UTF8:
+    default:
+        return message.toUtf8();
     }
 }
 
@@ -120,14 +137,26 @@ void TCPServer::onClientReadyRead()
     if (clientSocket) {
         QByteArray data = clientSocket->readAll();
         
-        // 智能检测编码
-        QString message = tryDecodeMessage(data);
+        // 根据接收编码设置解码消息
+        QString message;
+        if (receiveEncoding == AUTO) {
+            message = tryDecodeMessage(data);
+        } else if (receiveEncoding == GBK) {
+            QTextCodec *gbkCodec = QTextCodec::codecForName("GBK");
+            if (gbkCodec) {
+                message = gbkCodec->toUnicode(data);
+            } else {
+                message = QString::fromUtf8(data);
+            }
+        } else { // UTF8
+            message = QString::fromUtf8(data);
+        }
         
         emit messageReceived(getClientInfo(clientSocket), message);
         
-        // 回显消息给发送者，使用UTF-8编码
+        // 回显消息给发送者，使用相同的编码方式
         QString response = tr("%1").arg(message);
-        clientSocket->write(response.toUtf8());
+        clientSocket->write(encodeMessage(response));
     }
 }
 
