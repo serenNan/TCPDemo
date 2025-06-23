@@ -5,6 +5,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QList>
+#include <QTextCodec>
 
 class TCPServer : public QObject
 {
@@ -57,6 +58,9 @@ private:
     
     // 获取客户端信息
     QString getClientInfo(QTcpSocket *socket) const;
+    
+    // 尝试使用不同编码解码消息
+    QString tryDecodeMessage(const QByteArray &data);
 };
 
 #endif // TCPSERVER_H 

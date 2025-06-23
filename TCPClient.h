@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QTcpSocket>
+#include <QTextCodec>
 
 class TCPClient : public QObject
 {
@@ -48,6 +49,9 @@ private slots:
 private:
     // 客户端相关
     QTcpSocket *clientSocket;
+    
+    // 尝试使用不同编码解码消息
+    QString tryDecodeMessage(const QByteArray &data);
 };
 
 #endif // TCPCLIENT_H 

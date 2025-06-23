@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 add_compile_options(-Wall -Wextra)
 
 # 查找Qt包
-find_package(Qt6 COMPONENTS Core Widgets Network REQUIRED)
+find_package(Qt6 COMPONENTS Core Widgets Network Core5Compat REQUIRED)
 
 # Qt GUI应用
 set(CMAKE_AUTOMOC ON)
@@ -30,4 +30,4 @@ set(TCP_DEMO_SOURCES
 
 # TCP演示程序可执行文件（二合一模式）
 add_executable(TCPDemo ${TCP_DEMO_SOURCES})
-target_link_libraries(TCPDemo PRIVATE Qt6::Core Qt6::Widgets Qt6::Network)
+target_link_libraries(TCPDemo PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::Core5Compat)
