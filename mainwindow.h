@@ -2,10 +2,8 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <QTcpSocket>
-#include <QTcpServer>
-#include <QTimer>
-#include <QList>
+#include "TCPClient.h"
+#include "TCPServer.h"
 
 namespace Ui {
 class MainWindow;
@@ -29,25 +27,25 @@ private slots:
     void on_actionNewWindow_triggered();
     
     // 客户端相关槽函数
-    void onClientSocketConnected();
-    void onClientSocketDisconnected();
-    void onClientSocketReadyRead();
-    void onClientSocketError(QAbstractSocket::SocketError socketError);
+    void onClientConnected();
+    void onClientDisconnected();
+    void onClientMessageReceived(const QString &message);
+    void onClientError(const QString &errorMessage);
     
     // 服务端相关槽函数
-    void onServerNewConnection();
-    void onServerClientDisconnected();
-    void onServerClientReadyRead();
+    void onServerStarted(int port);
+    void onServerStopped();
+    void onServerClientConnected(const QString &clientInfo);
+    void onServerClientDisconnected(const QString &clientInfo);
+    void onServerMessageReceived(const QString &clientInfo, const QString &message);
+    void onServerError(const QString &errorMessage);
 
 private:
     Ui::MainWindow *ui;
     
-    // 客户端相关
-    QTcpSocket *clientSocket;
-    
-    // 服务端相关
-    QTcpServer *server;
-    QList<QTcpSocket*> serverClients;
+    // 客户端和服务端
+    TCPClient *client;
+    TCPServer *server;
     
     // 当前模式
     enum Mode {

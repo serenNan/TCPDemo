@@ -11,7 +11,6 @@ add_compile_options(-Wall -Wextra)
 # 查找Qt包
 find_package(Qt6 COMPONENTS Core Widgets Network REQUIRED)
 
-
 # Qt GUI应用
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -23,8 +22,12 @@ set(TCP_DEMO_SOURCES
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
+    TCPClient.cpp
+    TCPClient.h
+    TCPServer.cpp
+    TCPServer.h
 )
 
-# TCP演示程序可执行文件
+# TCP演示程序可执行文件（二合一模式）
 add_executable(TCPDemo ${TCP_DEMO_SOURCES})
 target_link_libraries(TCPDemo PRIVATE Qt6::Core Qt6::Widgets Qt6::Network)

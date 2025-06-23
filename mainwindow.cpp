@@ -6,8 +6,8 @@
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow),
-    clientSocket(new QTcpSocket(this)),
-    server(new QTcpServer(this)),
+    client(new TCPClient(this)),
+    server(new TCPServer(this)),
     currentMode(ClientMode)
 {
     ui->setupUi(this);
@@ -25,41 +25,24 @@ MainWindow::MainWindow(QWidget *parent) :
 
 MainWindow::~MainWindow()
 {
-    // 确保在析构时正确关闭所有连接
-    if (clientSocket->state() == QAbstractSocket::ConnectedState) {
-        clientSocket->disconnectFromHost();
-        if (!clientSocket->waitForDisconnected(3000)) {
-            clientSocket->abort();
-        }
-    }
-    
-    if (server->isListening()) {
-        // 断开所有客户端连接
-        for (QTcpSocket *client : serverClients) {
-            if (client->state() == QAbstractSocket::ConnectedState) {
-                client->disconnectFromHost();
-                if (!client->waitForDisconnected(1000)) {
-                    client->abort();
-                }
-            }
-        }
-        serverClients.clear();
-        server->close();
-    }
-    
     delete ui;
 }
 
 void MainWindow::setupConnections()
 {
     // 客户端信号连接
-    connect(clientSocket, &QTcpSocket::connected, this, &MainWindow::onClientSocketConnected);
-    connect(clientSocket, &QTcpSocket::disconnected, this, &MainWindow::onClientSocketDisconnected);
-    connect(clientSocket, &QTcpSocket::readyRead, this, &MainWindow::onClientSocketReadyRead);
-    connect(clientSocket, &QTcpSocket::errorOccurred, this, &MainWindow::onClientSocketError);
+    connect(client, &TCPClient::connected, this, &MainWindow::onClientConnected);
+    connect(client, &TCPClient::disconnected, this, &MainWindow::onClientDisconnected);
+    connect(client, &TCPClient::messageReceived, this, &MainWindow::onClientMessageReceived);
+    connect(client, &TCPClient::errorOccurred, this, &MainWindow::onClientError);
     
     // 服务端信号连接
-    connect(server, &QTcpServer::newConnection, this, &MainWindow::onServerNewConnection);
+    connect(server, &TCPServer::serverStarted, this, &MainWindow::onServerStarted);
+    connect(server, &TCPServer::serverStopped, this, &MainWindow::onServerStopped);
+    connect(server, &TCPServer::clientConnected, this, &MainWindow::onServerClientConnected);
+    connect(server, &TCPServer::clientDisconnected, this, &MainWindow::onServerClientDisconnected);
+    connect(server, &TCPServer::messageReceived, this, &MainWindow::onServerMessageReceived);
+    connect(server, &TCPServer::errorOccurred, this, &MainWindow::onServerError);
 }
 
 void MainWindow::on_modeComboBox_currentTextChanged(const QString &mode)
@@ -76,72 +59,30 @@ void MainWindow::on_startButton_clicked()
 {
     if (currentMode == ServerMode) {
         int port = ui->portEdit->text().toInt();
-        
-        // 如果服务器已经在运行，先关闭它
-        if (server->isListening()) {
-            on_stopButton_clicked();
-        }
-        
-        // 尝试启动服务器
-        if (server->listen(QHostAddress::Any, port)) {
-            appendToLog(tr("服务器已启动，监听端口: %1").arg(port));
-            updateUI();
-        } else {
-            QString errorMsg;
-            switch (server->serverError()) {
-            case QAbstractSocket::AddressInUseError:
-                errorMsg = tr("端口 %1 已被占用。请尝试其他端口或等待片刻后重试。").arg(port);
-                break;
-            case QAbstractSocket::SocketAccessError:
-                errorMsg = tr("权限不足，无法绑定端口 %1。请尝试使用大于1024的端口。").arg(port);
-                break;
-            default:
-                errorMsg = tr("无法启动服务器: %1").arg(server->errorString());
-                break;
-            }
-            
-            QMessageBox::critical(this, tr("服务器启动失败"), errorMsg);
-            appendToLog(tr("服务器启动失败: %1").arg(errorMsg));
-        }
+        server->startServer(port);
     }
 }
 
 void MainWindow::on_stopButton_clicked()
 {
-    if (currentMode == ServerMode && server->isListening()) {
+    if (currentMode == ServerMode && server->isRunning()) {
         appendToLog(tr("正在停止服务器..."));
-        
-        // 断开所有客户端连接
-        for (QTcpSocket *client : serverClients) {
-            if (client->state() == QAbstractSocket::ConnectedState) {
-                client->disconnectFromHost();
-                // 给客户端一点时间优雅断开
-                if (!client->waitForDisconnected(1000)) {
-                    client->abort();
-                }
-            }
-        }
-        serverClients.clear();
-        
-        // 关闭服务器
-        server->close();
-        appendToLog(tr("服务器已停止"));
-        updateUI();
+        server->stopServer();
     }
 }
 
 void MainWindow::on_connectButton_clicked()
 {
     if (currentMode == ClientMode) {
-        if (clientSocket->state() == QAbstractSocket::UnconnectedState) {
+        if (!client->isConnected()) {
             QString serverAddress = ui->serverAddressEdit->text();
             int port = ui->portEdit->text().toInt();
             
             appendToLog(tr("正在连接到 %1:%2...").arg(serverAddress).arg(port));
-            clientSocket->connectToHost(serverAddress, port);
+            client->connectToServer(serverAddress, port);
         } else {
             appendToLog(tr("正在断开连接..."));
-            clientSocket->disconnectFromHost();
+            client->disconnectFromServer();
         }
     }
 }
@@ -170,127 +111,86 @@ void MainWindow::sendMessage()
         return;
     }
     
-    if (currentMode == ClientMode && clientSocket->state() == QAbstractSocket::ConnectedState) {
-        clientSocket->write(message.toUtf8());
+    if (currentMode == ClientMode && client->isConnected()) {
+        client->sendMessage(message);
         appendToLog(tr("发送: %1").arg(message));
         ui->messageEdit->clear();
-    } else if (currentMode == ServerMode && !serverClients.isEmpty()) {
-        // 向所有连接的客户端发送消息
-        int sentCount = 0;
-        for (QTcpSocket *client : serverClients) {
-            if (client->state() == QAbstractSocket::ConnectedState) {
-                client->write(message.toUtf8());
-                sentCount++;
-            }
-        }
-        appendToLog(tr("广播给 %1 个客户端: %2").arg(sentCount).arg(message));
+    } else if (currentMode == ServerMode && server->isRunning()) {
+        server->broadcastMessage(message);
+        appendToLog(tr("广播给 %1 个客户端: %2").arg(server->clientCount()).arg(message));
         ui->messageEdit->clear();
     }
 }
 
 // 客户端相关槽函数
-void MainWindow::onClientSocketConnected()
+void MainWindow::onClientConnected()
 {
     appendToLog(tr("已连接到服务器"));
     updateUI();
 }
 
-void MainWindow::onClientSocketDisconnected()
+void MainWindow::onClientDisconnected()
 {
     appendToLog(tr("已断开连接"));
     updateUI();
 }
 
-void MainWindow::onClientSocketReadyRead()
+void MainWindow::onClientMessageReceived(const QString &message)
 {
-    QByteArray data = clientSocket->readAll();
-    appendToLog(tr("接收: %1").arg(QString::fromUtf8(data)));
+    appendToLog(tr("接收: %1").arg(message));
 }
 
-void MainWindow::onClientSocketError(QAbstractSocket::SocketError socketError)
+void MainWindow::onClientError(const QString &errorMessage)
 {
-    QString errorMsg;
-    switch (socketError) {
-    case QAbstractSocket::RemoteHostClosedError:
-        errorMsg = tr("服务器关闭了连接");
-        break;
-    case QAbstractSocket::HostNotFoundError:
-        errorMsg = tr("找不到服务器。请检查服务器地址。");
-        break;
-    case QAbstractSocket::ConnectionRefusedError:
-        errorMsg = tr("连接被拒绝。请确保服务器正在运行并检查端口号。");
-        break;
-    case QAbstractSocket::NetworkError:
-        errorMsg = tr("网络错误: %1").arg(clientSocket->errorString());
-        break;
-    default:
-        errorMsg = tr("连接错误: %1").arg(clientSocket->errorString());
-        break;
+    if (!errorMessage.contains("服务器关闭了连接")) {
+        QMessageBox::information(this, tr("TCP客户端"), errorMessage);
     }
-    
-    if (socketError != QAbstractSocket::RemoteHostClosedError) {
-        QMessageBox::information(this, tr("TCP客户端"), errorMsg);
-    }
-    appendToLog(errorMsg);
+    appendToLog(errorMessage);
     updateUI();
 }
 
 // 服务端相关槽函数
-void MainWindow::onServerNewConnection()
+void MainWindow::onServerStarted(int port)
 {
-    while (server->hasPendingConnections()) {
-        QTcpSocket *clientSocket = server->nextPendingConnection();
-        serverClients.append(clientSocket);
-        
-        // 连接客户端信号
-        connect(clientSocket, &QTcpSocket::disconnected, this, &MainWindow::onServerClientDisconnected);
-        connect(clientSocket, &QTcpSocket::readyRead, this, &MainWindow::onServerClientReadyRead);
-        
-        appendToLog(tr("新客户端连接: %1:%2")
-                   .arg(clientSocket->peerAddress().toString())
-                   .arg(clientSocket->peerPort()));
-        updateUI();
-    }
+    appendToLog(tr("服务器已启动，监听端口: %1").arg(port));
+    updateUI();
 }
 
-void MainWindow::onServerClientDisconnected()
+void MainWindow::onServerStopped()
 {
-    QTcpSocket *clientSocket = qobject_cast<QTcpSocket*>(sender());
-    if (clientSocket) {
-        appendToLog(tr("客户端断开连接: %1:%2")
-                   .arg(clientSocket->peerAddress().toString())
-                   .arg(clientSocket->peerPort()));
-        
-        serverClients.removeAll(clientSocket);
-        clientSocket->deleteLater();
+    appendToLog(tr("服务器已停止"));
         updateUI();
     }
+
+void MainWindow::onServerClientConnected(const QString &clientInfo)
+{
+    appendToLog(tr("新客户端连接: %1").arg(clientInfo));
+    updateUI();
 }
 
-void MainWindow::onServerClientReadyRead()
+void MainWindow::onServerClientDisconnected(const QString &clientInfo)
 {
-    QTcpSocket *clientSocket = qobject_cast<QTcpSocket*>(sender());
-    if (clientSocket) {
-        QByteArray data = clientSocket->readAll();
-        QString message = QString::fromUtf8(data);
-        
-        appendToLog(tr("收到来自 %1:%2 的消息: %3")
-                   .arg(clientSocket->peerAddress().toString())
-                   .arg(clientSocket->peerPort())
-                   .arg(message));
-        
-        // 回显消息给发送者
-        QString response = tr("服务器收到: %1").arg(message);
-        clientSocket->write(response.toUtf8());
+    appendToLog(tr("客户端断开连接: %1").arg(clientInfo));
+        updateUI();
     }
+
+void MainWindow::onServerMessageReceived(const QString &clientInfo, const QString &message)
+{
+    appendToLog(tr("收到来自 %1 的消息: %2").arg(clientInfo).arg(message));
+}
+
+void MainWindow::onServerError(const QString &errorMessage)
+{
+    QMessageBox::critical(this, tr("服务器错误"), errorMessage);
+    appendToLog(tr("服务器错误: %1").arg(errorMessage));
 }
 
 void MainWindow::updateUI()
 {
     bool isServerMode = (currentMode == ServerMode);
     bool isClientMode = (currentMode == ClientMode);
-    bool serverRunning = server->isListening();
-    bool clientConnected = (clientSocket->state() == QAbstractSocket::ConnectedState);
+    bool serverRunning = server->isRunning();
+    bool clientConnected = client->isConnected();
     
     // 模式相关控件
     ui->serverAddressEdit->setVisible(isClientMode);
@@ -307,11 +207,11 @@ void MainWindow::updateUI()
     if (isServerMode) {
         ui->startButton->setEnabled(!serverRunning);
         ui->stopButton->setEnabled(serverRunning);
-        ui->sendButton->setEnabled(serverRunning && !serverClients.isEmpty());
-        ui->messageEdit->setEnabled(serverRunning && !serverClients.isEmpty());
+        ui->sendButton->setEnabled(serverRunning && server->clientCount() > 0);
+        ui->messageEdit->setEnabled(serverRunning && server->clientCount() > 0);
         
         if (serverRunning) {
-            ui->statusLabel->setText(tr("服务器运行中 (客户端: %1)").arg(serverClients.size()));
+            ui->statusLabel->setText(tr("服务器运行中 (客户端: %1)").arg(server->clientCount()));
         } else {
             ui->statusLabel->setText(tr("服务器未启动"));
         }
