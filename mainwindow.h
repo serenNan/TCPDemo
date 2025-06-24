@@ -46,6 +46,19 @@ class MainWindow : public QMainWindow
     void onServerMessageReceived(const QString &clientInfo, const QString &message);
     void onServerError(const QString &errorMessage);
 
+    // 文件传输相关槽函数
+    void on_sendFileButton_clicked();
+    void on_sendImageButton_clicked();
+    void onClientFileReceived(const QString &fileName, qint64 fileSize, const QString &fileType,
+                              const QByteArray &fileData);
+    void onClientImageReceived(const QString &imageName, qint64 imageSize, const QString &imageType,
+                               const QByteArray &imageData);
+    void onServerFileReceived(const QString &clientInfo, const QString &fileName, qint64 fileSize,
+                              const QString &fileType, const QByteArray &fileData);
+    void onServerImageReceived(const QString &clientInfo, const QString &imageName,
+                               qint64 imageSize, const QString &imageType,
+                               const QByteArray &imageData);
+
   private:
     Ui::MainWindow *ui;
 

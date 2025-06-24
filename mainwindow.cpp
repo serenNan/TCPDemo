@@ -1,6 +1,9 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include <QBuffer>
 #include <QDateTime>
+#include <QDir>
+#include <QFileDialog>
 #include <QHostAddress>
 #include <QMessageBox>
 
@@ -40,6 +43,8 @@ void MainWindow::setupConnections()
     connect(client, &TCPClient::disconnected, this, &MainWindow::onClientDisconnected);
     connect(client, &TCPClient::messageReceived, this, &MainWindow::onClientMessageReceived);
     connect(client, &TCPClient::errorOccurred, this, &MainWindow::onClientError);
+    connect(client, &TCPClient::fileReceived, this, &MainWindow::onClientFileReceived);
+    connect(client, &TCPClient::imageReceived, this, &MainWindow::onClientImageReceived);
 
     // 服务端信号连接
     connect(server, &TCPServer::serverStarted, this, &MainWindow::onServerStarted);
@@ -48,6 +53,8 @@ void MainWindow::setupConnections()
     connect(server, &TCPServer::clientDisconnected, this, &MainWindow::onServerClientDisconnected);
     connect(server, &TCPServer::messageReceived, this, &MainWindow::onServerMessageReceived);
     connect(server, &TCPServer::errorOccurred, this, &MainWindow::onServerError);
+    connect(server, &TCPServer::fileReceived, this, &MainWindow::onServerFileReceived);
+    connect(server, &TCPServer::imageReceived, this, &MainWindow::onServerImageReceived);
 }
 
 void MainWindow::on_modeComboBox_currentTextChanged(const QString &mode)
@@ -489,5 +496,325 @@ void MainWindow::updateClientList()
     else
     {
         ui->targetClientComboBox->setCurrentIndex(0); // 默认选择"所有客户端"
+    }
+}
+
+void MainWindow::on_sendFileButton_clicked()
+{
+    QString filePath = QFileDialog::getOpenFileName(this, tr("选择文件"));
+    if (filePath.isEmpty())
+    {
+        return;
+    }
+
+    QFileInfo fileInfo(filePath);
+
+    if (currentMode == ClientMode && client->isConnected())
+    {
+        if (client->sendFile(filePath))
+        {
+            appendTimestampedMessage(
+                tr("发送文件: %1 (%2 字节)").arg(fileInfo.fileName()).arg(fileInfo.size()),
+                SentMessage);
+        }
+    }
+    else if (currentMode == ServerMode && server->isRunning())
+    {
+        int targetIndex = ui->targetClientComboBox->currentIndex();
+
+        if (targetIndex == 0)
+        {
+            // 广播文件给所有客户端
+            // 由于文件可能较大，这里提示用户确认
+            QMessageBox::StandardButton reply =
+                QMessageBox::question(this, tr("广播文件"),
+                                      tr("确定要将文件 %1 广播给所有 %2 个客户端吗?")
+                                          .arg(fileInfo.fileName())
+                                          .arg(server->clientCount()),
+                                      QMessageBox::Yes | QMessageBox::No);
+
+            if (reply == QMessageBox::Yes)
+            {
+                if (server->sendFile(filePath))
+                {
+                    appendTimestampedMessage(tr("广播文件给 %1 个客户端: %2 (%3 字节)")
+                                                 .arg(server->clientCount())
+                                                 .arg(fileInfo.fileName())
+                                                 .arg(fileInfo.size()),
+                                             SentMessage);
+                }
+            }
+        }
+        else
+        {
+            // 发送给特定客户端
+            QString clientInfo = ui->targetClientComboBox->currentText();
+            if (server->sendFileToClient(clientInfo, filePath))
+            {
+                appendTimestampedMessage(tr("发送文件给 %1: %2 (%3 字节)")
+                                             .arg(clientInfo)
+                                             .arg(fileInfo.fileName())
+                                             .arg(fileInfo.size()),
+                                         SentMessage);
+            }
+        }
+    }
+}
+
+void MainWindow::on_sendImageButton_clicked()
+{
+    QString imagePath = QFileDialog::getOpenFileName(
+        this, tr("选择图片"), "", tr("图片文件 (*.png *.jpg *.jpeg *.bmp *.gif)"));
+    if (imagePath.isEmpty())
+    {
+        return;
+    }
+
+    QFileInfo fileInfo(imagePath);
+
+    if (currentMode == ClientMode && client->isConnected())
+    {
+        if (client->sendImage(imagePath))
+        {
+            appendTimestampedMessage(tr("发送图片: %1").arg(fileInfo.fileName()), SentMessage);
+
+            // 在消息区域显示图片预览
+            QImage image(imagePath);
+            if (!image.isNull())
+            {
+                // 调整图片大小以适应消息区域
+                QImage scaledImage = image.scaledToWidth(300, Qt::SmoothTransformation);
+                QByteArray byteArray;
+                QBuffer buffer(&byteArray);
+                buffer.open(QIODevice::WriteOnly);
+                scaledImage.save(&buffer, "PNG");
+                QString html = QString("<img src='data:image/png;base64,%1' />")
+                                   .arg(QString(byteArray.toBase64()));
+                ui->logTextEdit->append(html);
+            }
+        }
+    }
+    else if (currentMode == ServerMode && server->isRunning())
+    {
+        // 类似文件发送的逻辑处理
+        int targetIndex = ui->targetClientComboBox->currentIndex();
+
+        if (targetIndex == 0)
+        {
+            // 广播图片给所有客户端
+            QMessageBox::StandardButton reply =
+                QMessageBox::question(this, tr("广播图片"),
+                                      tr("确定要将图片 %1 广播给所有 %2 个客户端吗?")
+                                          .arg(fileInfo.fileName())
+                                          .arg(server->clientCount()),
+                                      QMessageBox::Yes | QMessageBox::No);
+
+            if (reply == QMessageBox::Yes)
+            {
+                if (server->sendImage(imagePath))
+                {
+                    appendTimestampedMessage(tr("广播图片给 %1 个客户端: %2")
+                                                 .arg(server->clientCount())
+                                                 .arg(fileInfo.fileName()),
+                                             SentMessage);
+
+                    // 在消息区域显示图片预览
+                    QImage image(imagePath);
+                    if (!image.isNull())
+                    {
+                        QImage scaledImage = image.scaledToWidth(300, Qt::SmoothTransformation);
+                        QByteArray byteArray;
+                        QBuffer buffer(&byteArray);
+                        buffer.open(QIODevice::WriteOnly);
+                        scaledImage.save(&buffer, "PNG");
+                        QString html = QString("<img src='data:image/png;base64,%1' />")
+                                           .arg(QString(byteArray.toBase64()));
+                        ui->logTextEdit->append(html);
+                    }
+                }
+            }
+        }
+        else
+        {
+            // 发送给特定客户端
+            QString clientInfo = ui->targetClientComboBox->currentText();
+            if (server->sendImageToClient(clientInfo, imagePath))
+            {
+                appendTimestampedMessage(
+                    tr("发送图片给 %1: %2").arg(clientInfo).arg(fileInfo.fileName()), SentMessage);
+
+                // 在消息区域显示图片预览
+                QImage image(imagePath);
+                if (!image.isNull())
+                {
+                    QImage scaledImage = image.scaledToWidth(300, Qt::SmoothTransformation);
+                    QByteArray byteArray;
+                    QBuffer buffer(&byteArray);
+                    buffer.open(QIODevice::WriteOnly);
+                    scaledImage.save(&buffer, "PNG");
+                    QString html = QString("<img src='data:image/png;base64,%1' />")
+                                       .arg(QString(byteArray.toBase64()));
+                    ui->logTextEdit->append(html);
+                }
+            }
+        }
+    }
+}
+
+void MainWindow::onClientFileReceived(const QString &fileName, qint64 fileSize,
+                                      const QString &fileType, const QByteArray &fileData)
+{
+    appendTimestampedMessage(tr("收到文件: %1 (%2 字节)").arg(fileName).arg(fileSize),
+                             ReceivedMessage);
+
+    // 询问用户是否保存文件
+    QString saveDir = QFileDialog::getExistingDirectory(this, tr("选择保存目录"));
+    if (!saveDir.isEmpty())
+    {
+        QString savePath = QDir(saveDir).filePath(fileName);
+        QFile file(savePath);
+        if (file.open(QIODevice::WriteOnly))
+        {
+            file.write(fileData);
+            file.close();
+            appendToLog(tr("文件已保存至: %1").arg(savePath));
+        }
+        else
+        {
+            appendToLog(tr("无法保存文件: %1").arg(file.errorString()));
+        }
+    }
+}
+
+void MainWindow::onClientImageReceived(const QString &imageName, qint64 imageSize,
+                                       const QString &imageType, const QByteArray &imageData)
+{
+    appendTimestampedMessage(tr("收到图片: %1 (%2 字节)").arg(imageName).arg(imageSize),
+                             ReceivedMessage);
+
+    // 直接在消息区域显示图片
+    QImage image;
+    image.loadFromData(imageData);
+    if (!image.isNull())
+    {
+        // 调整图片大小以适应消息区域
+        QImage scaledImage = image.scaledToWidth(300, Qt::SmoothTransformation);
+        QByteArray displayData;
+        QBuffer buffer(&displayData);
+        buffer.open(QIODevice::WriteOnly);
+        scaledImage.save(&buffer, "PNG");
+        QString html =
+            QString("<img src='data:image/png;base64,%1' />").arg(QString(displayData.toBase64()));
+        ui->logTextEdit->append(html);
+
+        // 询问用户是否保存图片
+        QMessageBox::StandardButton reply =
+            QMessageBox::question(this, tr("保存图片"), tr("是否保存图片 %1?").arg(imageName),
+                                  QMessageBox::Yes | QMessageBox::No);
+
+        if (reply == QMessageBox::Yes)
+        {
+            QString saveDir = QFileDialog::getExistingDirectory(this, tr("选择保存目录"));
+            if (!saveDir.isEmpty())
+            {
+                QString savePath = QDir(saveDir).filePath(imageName);
+                QFile file(savePath);
+                if (file.open(QIODevice::WriteOnly))
+                {
+                    file.write(imageData);
+                    file.close();
+                    appendToLog(tr("图片已保存至: %1").arg(savePath));
+                }
+                else
+                {
+                    appendToLog(tr("无法保存图片: %1").arg(file.errorString()));
+                }
+            }
+        }
+    }
+    else
+    {
+        appendToLog(tr("无法显示接收到的图片"));
+    }
+}
+
+void MainWindow::onServerFileReceived(const QString &clientInfo, const QString &fileName,
+                                      qint64 fileSize, const QString &fileType,
+                                      const QByteArray &fileData)
+{
+    appendTimestampedMessage(
+        tr("收到来自 %1 的文件: %2 (%3 字节)").arg(clientInfo).arg(fileName).arg(fileSize),
+        ReceivedMessage);
+
+    // 询问用户是否保存文件
+    QString saveDir = QFileDialog::getExistingDirectory(this, tr("选择保存目录"));
+    if (!saveDir.isEmpty())
+    {
+        QString savePath = QDir(saveDir).filePath(fileName);
+        QFile file(savePath);
+        if (file.open(QIODevice::WriteOnly))
+        {
+            file.write(fileData);
+            file.close();
+            appendToLog(tr("文件已保存至: %1").arg(savePath));
+        }
+        else
+        {
+            appendToLog(tr("无法保存文件: %1").arg(file.errorString()));
+        }
+    }
+}
+
+void MainWindow::onServerImageReceived(const QString &clientInfo, const QString &imageName,
+                                       qint64 imageSize, const QString &imageType,
+                                       const QByteArray &imageData)
+{
+    appendTimestampedMessage(
+        tr("收到来自 %1 的图片: %2 (%3 字节)").arg(clientInfo).arg(imageName).arg(imageSize),
+        ReceivedMessage);
+
+    // 直接在消息区域显示图片
+    QImage image;
+    image.loadFromData(imageData);
+    if (!image.isNull())
+    {
+        // 调整图片大小以适应消息区域
+        QImage scaledImage = image.scaledToWidth(300, Qt::SmoothTransformation);
+        QByteArray displayData;
+        QBuffer buffer(&displayData);
+        buffer.open(QIODevice::WriteOnly);
+        scaledImage.save(&buffer, "PNG");
+        QString html =
+            QString("<img src='data:image/png;base64,%1' />").arg(QString(displayData.toBase64()));
+        ui->logTextEdit->append(html);
+
+        // 询问用户是否保存图片
+        QMessageBox::StandardButton reply = QMessageBox::question(
+            this, tr("保存图片"), tr("是否保存来自 %1 的图片 %2?").arg(clientInfo).arg(imageName),
+            QMessageBox::Yes | QMessageBox::No);
+
+        if (reply == QMessageBox::Yes)
+        {
+            QString saveDir = QFileDialog::getExistingDirectory(this, tr("选择保存目录"));
+            if (!saveDir.isEmpty())
+            {
+                QString savePath = QDir(saveDir).filePath(imageName);
+                QFile file(savePath);
+                if (file.open(QIODevice::WriteOnly))
+                {
+                    file.write(imageData);
+                    file.close();
+                    appendToLog(tr("图片已保存至: %1").arg(savePath));
+                }
+                else
+                {
+                    appendToLog(tr("无法保存图片: %1").arg(file.errorString()));
+                }
+            }
+        }
+    }
+    else
+    {
+        appendToLog(tr("无法显示接收到的图片"));
     }
 }

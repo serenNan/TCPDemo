@@ -1,5 +1,9 @@
 #include "TCPClient.h"
+#include <QBuffer>
+#include <QFile>
+#include <QFileInfo>
 #include <QHostAddress>
+#include <QImage>
 #include <QTextCodec>
 
 TCPClient::TCPClient(QObject *parent) : QObject(parent), clientSocket(new QTcpSocket(this))
@@ -84,31 +88,24 @@ void TCPClient::onSocketDisconnected()
 void TCPClient::onSocketReadyRead()
 {
     QByteArray data = clientSocket->readAll();
+    QString message = tryDecodeMessage(data);
 
-    // 根据接收编码设置解码消息
-    QString message;
-    if (receiveEncoding == AUTO)
+    // 检查是否是文件或图片消息
+    if (message.startsWith("[FILE]"))
     {
-        message = tryDecodeMessage(data);
+        // 处理文件消息
+        processFileMessage(message);
     }
-    else if (receiveEncoding == GBK)
+    else if (message.startsWith("[IMAGE]"))
     {
-        QTextCodec *gbkCodec = QTextCodec::codecForName("GBK");
-        if (gbkCodec)
-        {
-            message = gbkCodec->toUnicode(data);
-        }
-        else
-        {
-            message = QString::fromUtf8(data);
-        }
+        // 处理图片消息
+        processImageMessage(message);
     }
     else
-    { // UTF8
-        message = QString::fromUtf8(data);
+    {
+        // 处理普通文本消息
+        emit messageReceived(message);
     }
-
-    emit messageReceived(message);
 }
 
 // 尝试使用不同编码解码消息
@@ -174,4 +171,105 @@ void TCPClient::onSocketError(QAbstractSocket::SocketError socketError)
     }
 
     emit errorOccurred(errorMsg);
+}
+
+// 文件发送方法实现
+bool TCPClient::sendFile(const QString &filePath)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        emit errorOccurred(tr("无法打开文件: %1").arg(filePath));
+        return false;
+    }
+
+    QFileInfo fileInfo(filePath);
+    QByteArray fileData = file.readAll();
+    file.close();
+
+    // 构建消息: [FILE]文件名|文件大小|文件类型|Base64数据
+    QString message = QString("[FILE]%1|%2|%3|")
+                          .arg(fileInfo.fileName())
+                          .arg(fileData.size())
+                          .arg(fileInfo.suffix());
+
+    message += QString(fileData.toBase64());
+
+    // 发送消息
+    sendMessage(message);
+    return true;
+}
+
+// 图片发送方法实现
+bool TCPClient::sendImage(const QString &imagePath)
+{
+    QImage image(imagePath);
+    if (image.isNull())
+    {
+        emit errorOccurred(tr("无法加载图片: %1").arg(imagePath));
+        return false;
+    }
+
+    QFileInfo fileInfo(imagePath);
+    QByteArray imageData;
+    QBuffer buffer(&imageData);
+    buffer.open(QIODevice::WriteOnly);
+
+    // 保存为PNG格式
+    image.save(&buffer, "PNG");
+
+    // 构建消息: [IMAGE]图片名|图片大小|图片类型|Base64数据
+    QString message =
+        QString("[IMAGE]%1|%2|%3|").arg(fileInfo.fileName()).arg(imageData.size()).arg("PNG");
+
+    message += QString(imageData.toBase64());
+
+    // 发送消息
+    sendMessage(message);
+    return true;
+}
+
+// 添加文件消息处理方法
+void TCPClient::processFileMessage(const QString &message)
+{
+    // 解析文件消息: [FILE]文件名|文件大小|文件类型|Base64数据
+    QString content = message.mid(6); // 去掉 [FILE] 前缀
+    QStringList parts = content.split("|", Qt::KeepEmptyParts);
+
+    if (parts.size() < 4)
+    {
+        emit errorOccurred("收到的文件消息格式错误");
+        return;
+    }
+
+    QString fileName = parts[0];
+    qint64 fileSize = parts[1].toLongLong();
+    QString fileType = parts[2];
+    QString base64Data = parts[3];
+
+    // 发出文件接收信号
+    emit fileReceived(fileName, fileSize, fileType, QByteArray::fromBase64(base64Data.toLatin1()));
+}
+
+// 添加图片消息处理方法
+void TCPClient::processImageMessage(const QString &message)
+{
+    // 解析图片消息: [IMAGE]图片名|图片大小|图片类型|Base64数据
+    QString content = message.mid(7); // 去掉 [IMAGE] 前缀
+    QStringList parts = content.split("|", Qt::KeepEmptyParts);
+
+    if (parts.size() < 4)
+    {
+        emit errorOccurred("收到的图片消息格式错误");
+        return;
+    }
+
+    QString imageName = parts[0];
+    qint64 imageSize = parts[1].toLongLong();
+    QString imageType = parts[2];
+    QString base64Data = parts[3];
+
+    // 发出图片接收信号
+    emit imageReceived(imageName, imageSize, imageType,
+                       QByteArray::fromBase64(base64Data.toLatin1()));
 }

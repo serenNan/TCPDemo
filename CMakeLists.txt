@@ -9,7 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_options(-Wall -Wextra)
 
 # 查找Qt包
-find_package(Qt6 COMPONENTS Core Widgets Network Core5Compat REQUIRED)
+find_package(Qt6 COMPONENTS Core Widgets Network Core5Compat Gui REQUIRED)
 
 # Qt GUI应用
 set(CMAKE_AUTOMOC ON)

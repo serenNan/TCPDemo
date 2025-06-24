@@ -21,6 +21,14 @@ class TCPServer : public QObject
         AUTO
     };
 
+    // 消息类型枚举
+    enum MessageType
+    {
+        TextMessage,
+        FileMessage,
+        ImageMessage
+    };
+
     explicit TCPServer(QObject *parent = nullptr);
     ~TCPServer();
 
@@ -58,6 +66,14 @@ class TCPServer : public QObject
         receiveEncoding = encoding;
     }
 
+    // 发送文件方法
+    bool sendFile(const QString &filePath);
+    bool sendFileToClient(const QString &clientInfo, const QString &filePath);
+
+    // 发送图片方法
+    bool sendImage(const QString &imagePath);
+    bool sendImageToClient(const QString &clientInfo, const QString &imagePath);
+
   signals:
     // 服务器状态变化信号
     void serverStarted(int port);
@@ -72,6 +88,14 @@ class TCPServer : public QObject
 
     // 错误信号
     void errorOccurred(const QString &errorMessage);
+
+    // 文件接收信号
+    void fileReceived(const QString &clientInfo, const QString &fileName, qint64 fileSize,
+                      const QString &fileType, const QByteArray &fileData);
+
+    // 图片接收信号
+    void imageReceived(const QString &clientInfo, const QString &imageName, qint64 imageSize,
+                       const QString &imageType, const QByteArray &imageData);
 
   private slots:
     // 服务端相关槽函数
@@ -97,6 +121,12 @@ class TCPServer : public QObject
 
     // 根据设置的编码类型对消息进行编码
     QByteArray encodeMessage(const QString &message);
+
+    // 文件消息处理方法
+    void processFileMessage(QTcpSocket *socket, const QString &message);
+
+    // 图片消息处理方法
+    void processImageMessage(QTcpSocket *socket, const QString &message);
 };
 
 #endif // TCPSERVER_H
