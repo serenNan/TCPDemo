@@ -2,8 +2,7 @@
 #include <QHostAddress>
 #include <QTextCodec>
 
-TCPClient::TCPClient(QObject *parent)
-    : QObject(parent), clientSocket(new QTcpSocket(this))
+TCPClient::TCPClient(QObject *parent) : QObject(parent), clientSocket(new QTcpSocket(this))
 {
     // 连接信号和槽
     connect(clientSocket, &QTcpSocket::connected, this, &TCPClient::onSocketConnected);
@@ -19,16 +18,20 @@ TCPClient::~TCPClient()
 
 void TCPClient::connectToServer(const QString &address, int port)
 {
-    if (clientSocket->state() == QAbstractSocket::UnconnectedState) {
+    if (clientSocket->state() == QAbstractSocket::UnconnectedState)
+    {
         clientSocket->connectToHost(address, port);
     }
 }
 
 void TCPClient::disconnectFromServer()
 {
-    if (clientSocket->state() != QAbstractSocket::UnconnectedState) {
+    if (clientSocket->state() != QAbstractSocket::UnconnectedState)
+    {
         clientSocket->disconnectFromHost();
-        if (clientSocket->state() != QAbstractSocket::UnconnectedState && !clientSocket->waitForDisconnected(3000)) {
+        if (clientSocket->state() != QAbstractSocket::UnconnectedState &&
+            !clientSocket->waitForDisconnected(3000))
+        {
             clientSocket->abort();
         }
     }
@@ -36,7 +39,8 @@ void TCPClient::disconnectFromServer()
 
 void TCPClient::sendMessage(const QString &message)
 {
-    if (clientSocket->state() == QAbstractSocket::ConnectedState) {
+    if (clientSocket->state() == QAbstractSocket::ConnectedState)
+    {
         // 根据编码设置对消息进行编码
         QByteArray data = encodeMessage(message);
         clientSocket->write(data);
@@ -45,10 +49,12 @@ void TCPClient::sendMessage(const QString &message)
 
 QByteArray TCPClient::encodeMessage(const QString &message)
 {
-    switch (sendEncoding) {
+    switch (sendEncoding)
+    {
     case GBK: {
         QTextCodec *gbkCodec = QTextCodec::codecForName("GBK");
-        if (gbkCodec) {
+        if (gbkCodec)
+        {
             return gbkCodec->fromUnicode(message);
         }
         // 如果没有GBK编码支持，回退到UTF-8
@@ -78,22 +84,30 @@ void TCPClient::onSocketDisconnected()
 void TCPClient::onSocketReadyRead()
 {
     QByteArray data = clientSocket->readAll();
-    
+
     // 根据接收编码设置解码消息
     QString message;
-    if (receiveEncoding == AUTO) {
+    if (receiveEncoding == AUTO)
+    {
         message = tryDecodeMessage(data);
-    } else if (receiveEncoding == GBK) {
+    }
+    else if (receiveEncoding == GBK)
+    {
         QTextCodec *gbkCodec = QTextCodec::codecForName("GBK");
-        if (gbkCodec) {
+        if (gbkCodec)
+        {
             message = gbkCodec->toUnicode(data);
-        } else {
+        }
+        else
+        {
             message = QString::fromUtf8(data);
         }
-    } else { // UTF8
+    }
+    else
+    { // UTF8
         message = QString::fromUtf8(data);
     }
-    
+
     emit messageReceived(message);
 }
 
@@ -102,31 +116,37 @@ QString TCPClient::tryDecodeMessage(const QByteArray &data)
 {
     // 首先尝试UTF-8，这是Linux/Unix系统的标准编码
     QString utf8Message = QString::fromUtf8(data);
-    if (!utf8Message.contains(QChar(QChar::ReplacementCharacter))) {
+    if (!utf8Message.contains(QChar(QChar::ReplacementCharacter)))
+    {
         return utf8Message;
     }
-    
+
     // 如果UTF-8解码有问题，尝试GBK/GB18030（常用于中文Windows系统）
     QTextCodec *gbkCodec = QTextCodec::codecForName("GB18030");
-    if (gbkCodec) {
+    if (gbkCodec)
+    {
         QString gbkMessage = gbkCodec->toUnicode(data);
-        if (!gbkMessage.contains(QChar(QChar::ReplacementCharacter))) {
+        if (!gbkMessage.contains(QChar(QChar::ReplacementCharacter)))
+        {
             return gbkMessage;
         }
     }
-    
+
     // 尝试其他可能的中文编码
     QList<QByteArray> codecs = {"GBK", "GB2312", "Big5"};
-    for (const QByteArray &codecName : codecs) {
+    for (const QByteArray &codecName : codecs)
+    {
         QTextCodec *codec = QTextCodec::codecForName(codecName);
-        if (codec) {
+        if (codec)
+        {
             QString message = codec->toUnicode(data);
-            if (!message.contains(QChar(QChar::ReplacementCharacter))) {
+            if (!message.contains(QChar(QChar::ReplacementCharacter)))
+            {
                 return message;
             }
         }
     }
-    
+
     // 如果所有尝试都失败，返回系统默认编码的结果
     return QString::fromLocal8Bit(data);
 }
@@ -134,7 +154,8 @@ QString TCPClient::tryDecodeMessage(const QByteArray &data)
 void TCPClient::onSocketError(QAbstractSocket::SocketError socketError)
 {
     QString errorMsg;
-    switch (socketError) {
+    switch (socketError)
+    {
     case QAbstractSocket::RemoteHostClosedError:
         errorMsg = tr("服务器关闭了连接");
         break;
@@ -151,6 +172,6 @@ void TCPClient::onSocketError(QAbstractSocket::SocketError socketError)
         errorMsg = tr("连接错误: %1").arg(clientSocket->errorString());
         break;
     }
-    
+
     emit errorOccurred(errorMsg);
-} 
+}
